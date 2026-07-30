@@ -1,0 +1,25 @@
+{
+  "name": "proyecto-eventos-deportivos",
+  "version": "1.0.0",
+  "description": "API Backend para Plataforma de Eventos Deportivos, Inscripciones y Tickets",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "express",
+    "backend",
+    "sports-events",
+    "mongodb",
+    "mongoose"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.3.1"
+  }
+}
