@@ -29,16 +29,23 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ['user', 'organizer', 'admin'],
       default: 'user'
-    },
-    sport_preference: {
-      type: String,
-      default: 'General'
     }
   },
   {
     timestamps: true
   }
 );
+
+// Transformación para ocultar la contraseña al convertir a JSON
+userSchema.set('toJSON', {
+  transform: (doc, ret) => {
+    ret.id = ret._id;
+    delete ret._id;
+    delete ret.__v;
+    delete ret.password;
+    return ret;
+  }
+});
 
 const UserModel = mongoose.model(userCollection, userSchema);
 
