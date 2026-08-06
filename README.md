@@ -2,7 +2,7 @@
 
 ¡Bienvenido a **SportEventHub**! Este proyecto es la API backend para una plataforma de gestión de eventos deportivos, inscripciones y tickets/cupos. Permite organizar torneos, maratones, partidos, competencias y talleres deportivos, conectando a deportistas con organizadores.
 
-Este desarrollo corresponde al proyecto de **Backend II**, implementando una arquitectura profesional por capas con el patrón Repository, Data Access Objects (DAO), Servicios, Controladores, Middlewares y Configuración centralizada.
+Este desarrollo corresponde al proyecto de **Backend II**, implementando una arquitectura profesional por capas con el patrón Repository, Data Access Objects (DAO), Servicios, Controladores, Middlewares, Hashing seguro con `bcrypt` y Configuración centralizada.
 
 ---
 
@@ -21,14 +21,13 @@ Este desarrollo corresponde al proyecto de **Backend II**, implementando una arq
 - **Runtime**: [Node.js](https://nodejs.org/) (Módulos ESM - `import/export`)
 - **Framework**: [Express.js](https://expressjs.com/)
 - **Base de Datos**: [MongoDB](https://www.mongodb.com/) con [Mongoose ODM](https://mongoosejs.com/)
+- **Seguridad**: [bcryptjs](https://www.npmjs.com/package/bcryptjs) para hashing de contraseñas
 - **Variables de Entorno**: [dotenv](https://www.npmjs.com/package/dotenv)
 - **Gestor de paquetes**: `npm`
 
 ---
 
 ## 📂 Estructura Arquitectónica por Capas
-
-El proyecto está organizado siguiendo una arquitectura desacoplada en 3 capas principales y módulos auxiliares:
 
 ```text
 proyecto-eventos-deportivos/
@@ -40,11 +39,11 @@ proyecto-eventos-deportivos/
 │   │   └── db.js              # Conexión Mongoose a la base de datos
 │   ├── routes/                # Capa de Enrutamiento (Events, Sessions)
 │   │   ├── events.router.js
-│   │   └── sessions.router.js
+│   │   └── sessions.router.js # Endpoint POST /api/sessions/register
 │   ├── controllers/           # Capa de Controladores (Request / Response)
 │   │   ├── events.controller.js
 │   │   └── sessions.controller.js
-│   ├── services/              # Capa de Lógica de Negocio
+│   ├── services/              # Capa de Lógica de Negocio (Validación, Hash, Normalización)
 │   │   ├── events.service.js
 │   │   └── sessions.service.js
 │   ├── repositories/          # Capa de Abstracción de Persistencia (Patrón Repository)
@@ -54,17 +53,18 @@ proyecto-eventos-deportivos/
 │   │   ├── events.dao.js
 │   │   └── users.dao.js
 │   ├── models/                # Modelos y Esquemas Mongoose
-│   │   ├── User.js            # Modelo base de Usuario (Deportista / Organizador / Admin)
+│   │   ├── User.js            # Modelo base de Usuario (first_name, last_name, email, password, role)
 │   │   └── Event.js           # Modelo base de Evento Deportivo
 │   ├── middlewares/           # Middlewares de Express
 │   │   ├── logger.middleware.js # Log de peticiones HTTP
 │   │   └── error.middleware.js  # Gestor global de errores
 │   └── utils/                 # Herramientas y utilidades compartidas
+│       ├── hash.js            # Helper reutilizable de bcryptjs (createHash, isValidPassword)
 │       ├── custom-error.js    # Manejo de excepciones con código HTTP
 │       └── response-handler.js# Respuestas JSON estandarizadas
 ├── .env.example               # Ejemplos de variables de entorno
-├── .gitignore                 # Exclusión de archivos sensibles e instalados
-├── package.json               # Configuración de proyecto en formato ESM
+├── .gitignore                 # Exclusión de archivos sensibles e instalados (.env y node_modules)
+├── package.json               # Configuración de proyecto en formato ESM y dependencias
 └── README.md                  # Documentación del proyecto
 ```
 
@@ -95,7 +95,7 @@ JWT_SECRET=tu_secreto_super_seguro_jwt_backend2
 
 ## 🚀 Cómo Ejecutar la Aplicación
 
-### Modo Desarrollo (con recarga automática Node `--watch`):
+### Modo Desarrollo (con recarga automática):
 ```bash
 npm run dev
 ```
@@ -109,10 +109,92 @@ El servidor estará escuchando por defecto en: `http://localhost:8080`
 
 ---
 
-## 🌐 Endpoints Disponibles
+## 🌐 Endpoints Disponibles y Guía de Pruebas
 
-### 1. Estado de Salud del Servidor
-- **Ruta**: `GET /api/health`
+### 1. Registro Seguro de Usuarios (`POST /api/sessions/register`)
+
+Permite registrar nuevos usuarios en el sistema. Aplica validaciones de campos obligatorios, formato de email, normalización (`trim()` + `toLowerCase()`), hash de contraseña con `bcrypt` y forzado del rol por defecto `user`.
+
+#### **Campos que espera el body (JSON):**
+| Campo | Tipo | Requerido | Descripción |
+| :--- | :--- | :---: | :--- |
+| `first_name` | String | Sí | Nombre del usuario |
+| `last_name` | String | Sí | Apellido del usuario |
+| `email` | String | Sí | Correo electrónico (se normaliza a minúsculas sin espacios) |
+| `password` | String | Sí | Contraseña en texto plano (mínimo 6 caracteres) |
+
+#### **Casos de prueba:**
+
+##### 🟢 Caso 1: Registro Exitoso (`201 Created`)
+**Request Body**:
+```json
+{
+  "first_name": "Ana",
+  "last_name": "Pérez",
+  "email": "Ana@Mail.com ",
+  "password": "Secreta123"
+}
+```
+**Response 201 Created** (Respuesta sanitizada sin la contraseña):
+```json
+{
+  "status": "success",
+  "payload": {
+    "id": "665f2a9b1c2d3e4f5a6b7c8d",
+    "first_name": "Ana",
+    "last_name": "Pérez",
+    "email": "ana@mail.com",
+    "role": "user"
+  }
+}
+```
+
+##### 🔴 Caso 2: Campos Faltantes (`400 Bad Request`)
+**Request Body**:
+```json
+{
+  "first_name": "Ana",
+  "email": "ana@mail.com"
+}
+```
+**Response 400 Bad Request**:
+```json
+{
+  "status": "error",
+  "message": "Faltan campos obligatorios"
+}
+```
+
+##### 🔴 Caso 3: Formato de Email Inválido (`400 Bad Request`)
+**Request Body**:
+```json
+{
+  "first_name": "Ana",
+  "last_name": "Pérez",
+  "email": "formato_invalido",
+  "password": "Secreta123"
+}
+```
+**Response 400 Bad Request**:
+```json
+{
+  "status": "error",
+  "message": "Formato de email inválido"
+}
+```
+
+##### 🔴 Caso 4: Email ya Registrado (`409 Conflict`)
+**Response 409 Conflict**:
+```json
+{
+  "status": "error",
+  "message": "El email ya está registrado"
+}
+```
+
+---
+
+### 2. Estado de Salud del Servidor (`GET /api/health`)
 - **Respuesta esperada** (`200 OK`):
 ```json
 {
@@ -121,28 +203,12 @@ El servidor estará escuchando por defecto en: `http://localhost:8080`
 }
 ```
 
-### 2. Listado de Eventos Deportivos
-- **Ruta**: `GET /api/events`
+### 3. Listado de Eventos Deportivos (`GET /api/events`)
 - **Respuesta esperada** (`200 OK`):
 ```json
 {
   "status": "success",
   "message": "Eventos deportivos obtenidos con éxito",
   "payload": []
-}
-```
-
-### 3. Módulo de Sesiones
-- **Ruta**: `GET /api/sessions`
-- **Respuesta esperada** (`200 OK`):
-```json
-{
-  "status": "success",
-  "message": "Estructura inicial de sesiones lista",
-  "payload": {
-    "status": "active",
-    "module": "sessions",
-    "timestamp": "2026-08-06T14:44:00.000Z"
-  }
 }
 ```
