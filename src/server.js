@@ -1,12 +1,11 @@
-import dotenv from 'dotenv';
 import app from './app.js';
+import config from './config/config.js';
+import connectDB from './config/db.js';
 
-// Carga de variables de entorno desde el archivo .env
-dotenv.config();
+// Conexión a MongoDB
+connectDB();
 
-const PORT = process.env.PORT || 8080;
-
-app.listen(PORT, () => {
-  console.log(`[Servidor Deportivo] Servidor escuchando en http://localhost:${PORT}`);
-  console.log(`[Servidor Deportivo] Entorno: ${process.env.NODE_ENV || 'development'}`);
+app.listen(config.port, () => {
+  console.log(`[Servidor Deportivo] Servidor escuchando en http://localhost:${config.port}`);
+  console.log(`[Servidor Deportivo] Entorno: ${config.nodeEnv}`);
 });

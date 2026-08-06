@@ -1,18 +1,11 @@
-/**
- * Controladores para el recurso de Eventos Deportivos
- */
+import eventsService from '../services/events.service.js';
+import { successResponse } from '../utils/response-handler.js';
 
-export const getEvents = async (req, res) => {
+export const getEvents = async (req, res, next) => {
   try {
-    // Por el momento en Pre-entrega 1 devuelve lista vacía
-    return res.status(200).json({
-      status: 'success',
-      payload: []
-    });
+    const events = await eventsService.fetchAllEvents();
+    return successResponse(res, events, 'Eventos deportivos obtenidos con éxito');
   } catch (error) {
-    return res.status(500).json({
-      status: 'error',
-      message: 'Error al obtener la lista de eventos deportivos: ' + error.message
-    });
+    next(error);
   }
 };

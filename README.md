@@ -2,7 +2,7 @@
 
 ¡Bienvenido a **SportEventHub**! Este proyecto es la API backend para una plataforma de gestión de eventos deportivos, inscripciones y tickets/cupos. Permite organizar torneos, maratones, partidos, competencias y talleres deportivos, conectando a deportistas con organizadores.
 
-Este desarrollo corresponde a la **Pre-entrega 1 del curso Backend II**, donde se establece el refactor e infraestructura base de arquitectura en capas con Express y Node.js.
+Este desarrollo corresponde al proyecto de **Backend II**, implementando una arquitectura profesional por capas con el patrón Repository, Data Access Objects (DAO), Servicios, Controladores, Middlewares y Configuración centralizada.
 
 ---
 
@@ -26,30 +26,42 @@ Este desarrollo corresponde a la **Pre-entrega 1 del curso Backend II**, donde s
 
 ---
 
-## 📂 Estructura de Carpetas
+## 📂 Estructura Arquitectónica por Capas
 
-El proyecto está organizado siguiendo una arquitectura profesional por capas:
+El proyecto está organizado siguiendo una arquitectura desacoplada en 3 capas principales y módulos auxiliares:
 
 ```text
 proyecto-eventos-deportivos/
 ├── src/
-│   ├── app.js                 # Configuración de Express, middlewares y rutas (sin listen)
-│   ├── server.js              # Punto de entrada que inicializa y escucha el servidor HTTP
-│   ├── config/                # Ajustes y configuración de base de datos / constantes
+│   ├── app.js                 # Configuración de Express, middlewares globales y rutas
+│   ├── server.js              # Punto de entrada, conexión a BD e inicio del servidor HTTP
+│   ├── config/                # Ajustes centralizados y conexión a MongoDB
+│   │   ├── config.js          # Variables de entorno procesadas por dotenv
+│   │   └── db.js              # Conexión Mongoose a la base de datos
 │   ├── routes/                # Capa de Enrutamiento (Events, Sessions)
 │   │   ├── events.router.js
 │   │   └── sessions.router.js
-│   ├── controllers/           # Capa de Controladores (Procesamiento de Request y Response)
+│   ├── controllers/           # Capa de Controladores (Request / Response)
 │   │   ├── events.controller.js
 │   │   └── sessions.controller.js
-│   ├── services/              # Capa de Servicios (Lógica de Negocio)
-│   ├── repositories/          # Capa de Repositorios (Patrón Repository)
-│   ├── dao/                   # Data Access Object (Persistencia y consultas Mongo)
+│   ├── services/              # Capa de Lógica de Negocio
+│   │   ├── events.service.js
+│   │   └── sessions.service.js
+│   ├── repositories/          # Capa de Abstracción de Persistencia (Patrón Repository)
+│   │   ├── events.repository.js
+│   │   └── users.repository.js
+│   ├── dao/                   # Data Access Objects (Consultas Mongoose directas)
+│   │   ├── events.dao.js
+│   │   └── users.dao.js
 │   ├── models/                # Modelos y Esquemas Mongoose
 │   │   ├── User.js            # Modelo base de Usuario (Deportista / Organizador / Admin)
 │   │   └── Event.js           # Modelo base de Evento Deportivo
-│   ├── middlewares/           # Middlewares de validación, autorización y errores
-│   └── utils/                 # Funciones auxiliares y herramientas compartidas
+│   ├── middlewares/           # Middlewares de Express
+│   │   ├── logger.middleware.js # Log de peticiones HTTP
+│   │   └── error.middleware.js  # Gestor global de errores
+│   └── utils/                 # Herramientas y utilidades compartidas
+│       ├── custom-error.js    # Manejo de excepciones con código HTTP
+│       └── response-handler.js# Respuestas JSON estandarizadas
 ├── .env.example               # Ejemplos de variables de entorno
 ├── .gitignore                 # Exclusión de archivos sensibles e instalados
 ├── package.json               # Configuración de proyecto en formato ESM
@@ -63,7 +75,7 @@ proyecto-eventos-deportivos/
 ### 1. Clonar el repositorio e instalar dependencias
 
 ```bash
-git clone <URL_DE_TU_REPOSITORIO_GITHUB>
+git clone https://github.com/Tiagopinfari/proyecto-eventos-deportivos.git
 cd proyecto-eventos-deportivos
 npm install
 ```
@@ -97,7 +109,7 @@ El servidor estará escuchando por defecto en: `http://localhost:8080`
 
 ---
 
-## 🌐 Endpoints Disponibles en esta Pre-Entrega
+## 🌐 Endpoints Disponibles
 
 ### 1. Estado de Salud del Servidor
 - **Ruta**: `GET /api/health`
@@ -115,16 +127,22 @@ El servidor estará escuchando por defecto en: `http://localhost:8080`
 ```json
 {
   "status": "success",
+  "message": "Eventos deportivos obtenidos con éxito",
   "payload": []
 }
 ```
 
-### 3. Módulo de Sesiones (Estructura Inicial)
+### 3. Módulo de Sesiones
 - **Ruta**: `GET /api/sessions`
 - **Respuesta esperada** (`200 OK`):
 ```json
 {
   "status": "success",
-  "message": "Estructura inicial de sesiones lista"
+  "message": "Estructura inicial de sesiones lista",
+  "payload": {
+    "status": "active",
+    "module": "sessions",
+    "timestamp": "2026-08-06T14:44:00.000Z"
+  }
 }
 ```
