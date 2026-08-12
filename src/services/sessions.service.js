@@ -1,6 +1,7 @@
 import usersRepository from '../repositories/users.repository.js';
 import CustomError from '../utils/custom-error.js';
-import { createHash } from '../utils/hash.js';
+import { createHash, isValidPassword } from '../utils/hash.js';
+import { generateToken } from '../utils/jwt.js';
 
 export class SessionsService {
   constructor(repository = usersRepository) {
@@ -23,35 +24,28 @@ export class SessionsService {
   async registerUser(userData) {
     const { first_name, last_name, email, password } = userData || {};
 
-    // 1. Validar presencia de campos obligatorios
     if (!first_name || !last_name || !email || !password) {
       throw new CustomError('Faltan campos obligatorios', 400);
     }
 
-    // 2. Validar formato de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
       throw new CustomError('Formato de email inválido', 400);
     }
 
-    // 3. Validar longitud de la contraseña
     if (password.length < 6) {
       throw new CustomError('La contraseña debe tener al menos 6 caracteres', 400);
     }
 
-    // 4. Normalizar email (trim + lowercase)
     const normalizedEmail = email.trim().toLowerCase();
 
-    // 5. Verificar si el email ya se encuentra registrado
     const existingUser = await this.repository.getUserByEmail(normalizedEmail);
     if (existingUser) {
       throw new CustomError('El email ya está registrado', 409);
     }
 
-    // 6. Hashear la contraseña utilizando bcrypt
     const hashedPassword = createHash(password);
 
-    // 7. Forzar el rol a 'user' (no manipulable por el body público)
     const newUserData = {
       first_name: first_name.trim(),
       last_name: last_name.trim(),
@@ -62,13 +56,70 @@ export class SessionsService {
 
     const savedUser = await this.repository.createUser(newUserData);
 
-    // 8. Retornar payload sanitizado sin contraseña
     return {
       id: savedUser._id ? savedUser._id.toString() : savedUser.id,
       first_name: savedUser.first_name,
       last_name: savedUser.last_name,
       email: savedUser.email,
       role: savedUser.role
+    };
+  }
+
+  /**
+   * Autentica a un usuario y genera su token JWT
+   * @param {Object} credentials - Objeto con email y password
+   * @returns {Object} Objeto con token JWT generado
+   */
+  async loginUser(credentials) {
+    const { email, password } = credentials || {};
+
+    if (!email || !password) {
+      throw new CustomError('Credenciales inválidas', 401);
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.repository.getUserByEmail(normalizedEmail);
+
+    if (!user) {
+      throw new CustomError('Credenciales inválidas', 401);
+    }
+
+    const validPassword = isValidPassword(password, user.password);
+    if (!validPassword) {
+      throw new CustomError('Credenciales inválidas', 401);
+    }
+
+    const userId = user._id ? user._id.toString() : user.id;
+
+    const token = generateToken({
+      id: userId,
+      email: user.email,
+      role: user.role
+    });
+
+    return {
+      token,
+      user: {
+        id: userId,
+        email: user.email,
+        role: user.role
+      }
+    };
+  }
+
+  /**
+   * Retorna la información segura del usuario autenticado en la sesión actual
+   * @param {Object} user - Usuario decodificado del JWT
+   * @returns {Object} Payload seguro ({ id, email, role })
+   */
+  getCurrentUserPayload(user) {
+    if (!user) {
+      throw new CustomError('No autenticado', 401);
+    }
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role
     };
   }
 }
