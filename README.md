@@ -2,7 +2,7 @@
 
 ¡Bienvenido a **SportEventHub**! Este proyecto es la API backend para una plataforma de gestión de eventos deportivos, inscripciones y tickets/cupos. Permite organizar torneos, maratones, partidos, competencias y talleres deportivos, conectando a deportistas con organizadores.
 
-Este desarrollo corresponde al proyecto de **Backend II**, implementando una arquitectura profesional por capas con el patrón Repository, Data Access Objects (DAO), Servicios, Controladores, Middlewares, Hashing seguro con `bcrypt` y Configuración centralizada.
+Este desarrollo corresponde al proyecto de **Backend II**, implementando una arquitectura profesional por capas con el patrón Repository, Data Access Objects (DAO), Servicios, Controladores, Middlewares, Autenticación basada en **JWT y cookies HttpOnly**, Hashing de contraseñas con `bcrypt` y Configuración centralizada.
 
 ---
 
@@ -21,7 +21,7 @@ Este desarrollo corresponde al proyecto de **Backend II**, implementando una arq
 - **Runtime**: [Node.js](https://nodejs.org/) (Módulos ESM - `import/export`)
 - **Framework**: [Express.js](https://expressjs.com/)
 - **Base de Datos**: [MongoDB](https://www.mongodb.com/) con [Mongoose ODM](https://mongoosejs.com/)
-- **Seguridad**: [bcryptjs](https://www.npmjs.com/package/bcryptjs) para hashing de contraseñas
+- **Autenticación y Seguridad**: [jsonwebtoken](https://www.npmjs.com/package/jsonwebtoken), [cookie-parser](https://www.npmjs.com/package/cookie-parser), [bcryptjs](https://www.npmjs.com/package/bcryptjs)
 - **Variables de Entorno**: [dotenv](https://www.npmjs.com/package/dotenv)
 - **Gestor de paquetes**: `npm`
 
@@ -32,18 +32,18 @@ Este desarrollo corresponde al proyecto de **Backend II**, implementando una arq
 ```text
 proyecto-eventos-deportivos/
 ├── src/
-│   ├── app.js                 # Configuración de Express, middlewares globales y rutas
+│   ├── app.js                 # Configuración de Express, cookieParser, middlewares y rutas
 │   ├── server.js              # Punto de entrada, conexión a BD e inicio del servidor HTTP
 │   ├── config/                # Ajustes centralizados y conexión a MongoDB
 │   │   ├── config.js          # Variables de entorno procesadas por dotenv
 │   │   └── db.js              # Conexión Mongoose a la base de datos
 │   ├── routes/                # Capa de Enrutamiento (Events, Sessions)
 │   │   ├── events.router.js
-│   │   └── sessions.router.js # Endpoint POST /api/sessions/register
-│   ├── controllers/           # Capa de Controladores (Request / Response)
+│   │   └── sessions.router.js # Rutas de registro, login, current y logout
+│   ├── controllers/           # Capa de Controladores (Request / Response / Cookies)
 │   │   ├── events.controller.js
 │   │   └── sessions.controller.js
-│   ├── services/              # Capa de Lógica de Negocio (Validación, Hash, Normalización)
+│   ├── services/              # Capa de Lógica de Negocio (Validaciones, JWT, Hash)
 │   │   ├── events.service.js
 │   │   └── sessions.service.js
 │   ├── repositories/          # Capa de Abstracción de Persistencia (Patrón Repository)
@@ -56,9 +56,11 @@ proyecto-eventos-deportivos/
 │   │   ├── User.js            # Modelo base de Usuario (first_name, last_name, email, password, role)
 │   │   └── Event.js           # Modelo base de Evento Deportivo
 │   ├── middlewares/           # Middlewares de Express
+│   │   ├── auth.middleware.js # Verificación de cookie HttpOnly 'currentUser' y JWT
 │   │   ├── logger.middleware.js # Log de peticiones HTTP
 │   │   └── error.middleware.js  # Gestor global de errores
 │   └── utils/                 # Herramientas y utilidades compartidas
+│       ├── jwt.js             # Helper para firmar y verificar tokens JWT (generateToken, verifyToken)
 │       ├── hash.js            # Helper reutilizable de bcryptjs (createHash, isValidPassword)
 │       ├── custom-error.js    # Manejo de excepciones con código HTTP
 │       └── response-handler.js# Respuestas JSON estandarizadas
@@ -89,6 +91,7 @@ PORT=8080
 NODE_ENV=development
 MONGO_URL=mongodb+srv://<usuario>:<password>@cluster0.example.mongodb.net/eventos_deportivos?retryWrites=true&w=majority
 JWT_SECRET=tu_secreto_super_seguro_jwt_backend2
+JWT_EXPIRES_IN=1h
 ```
 
 ---
@@ -109,33 +112,32 @@ El servidor estará escuchando por defecto en: `http://localhost:8080`
 
 ---
 
-## 🌐 Endpoints Disponibles y Guía de Pruebas
+## 🌐 Tabla de Rutas y Endpoints Disponibles
 
-### 1. Registro Seguro de Usuarios (`POST /api/sessions/register`)
+| Método | Ruta | Descripción | Requiere Auth | Cookie |
+| :--- | :--- | :--- | :---: | :---: |
+| `GET` | `/api/health` | Estado de salud del servidor | No | No |
+| `GET` | `/api/events` | Listado de eventos deportivos | No | No |
+| `POST` | `/api/sessions/register` | Registro seguro de usuarios | No | No |
+| `POST` | `/api/sessions/login` | Inicio de sesión y generación de JWT | No | Setea `currentUser` |
+| `GET` | `/api/sessions/current` | Obtiene el usuario autenticado | Sí | Requiere `currentUser` |
+| `POST` | `/api/sessions/logout` | Cierre de sesión | No | Borra `currentUser` |
 
-Permite registrar nuevos usuarios en el sistema. Aplica validaciones de campos obligatorios, formato de email, normalización (`trim()` + `toLowerCase()`), hash de contraseña con `bcrypt` y forzado del rol por defecto `user`.
+---
 
-#### **Campos que espera el body (JSON):**
-| Campo | Tipo | Requerido | Descripción |
-| :--- | :--- | :---: | :--- |
-| `first_name` | String | Sí | Nombre del usuario |
-| `last_name` | String | Sí | Apellido del usuario |
-| `email` | String | Sí | Correo electrónico (se normaliza a minúsculas sin espacios) |
-| `password` | String | Sí | Contraseña en texto plano (mínimo 6 caracteres) |
+## 📖 Detalles y Ejemplos de Peticiones
 
-#### **Casos de prueba:**
-
-##### 🟢 Caso 1: Registro Exitoso (`201 Created`)
-**Request Body**:
+### 1. Registro de Usuarios (`POST /api/sessions/register`)
+- **Request Body**:
 ```json
 {
   "first_name": "Ana",
   "last_name": "Pérez",
-  "email": "Ana@Mail.com ",
+  "email": "ana@mail.com",
   "password": "Secreta123"
 }
 ```
-**Response 201 Created** (Respuesta sanitizada sin la contraseña):
+- **Response 201 Created**:
 ```json
 {
   "status": "success",
@@ -149,66 +151,67 @@ Permite registrar nuevos usuarios en el sistema. Aplica validaciones de campos o
 }
 ```
 
-##### 🔴 Caso 2: Campos Faltantes (`400 Bad Request`)
-**Request Body**:
-```json
-{
-  "first_name": "Ana",
-  "email": "ana@mail.com"
-}
-```
-**Response 400 Bad Request**:
-```json
-{
-  "status": "error",
-  "message": "Faltan campos obligatorios"
-}
-```
+---
 
-##### 🔴 Caso 3: Formato de Email Inválido (`400 Bad Request`)
-**Request Body**:
+### 2. Inicio de Sesión (`POST /api/sessions/login`)
+Valida el correo y la contraseña. Si son correctos, firma un JWT y setea la cookie `currentUser` (`httpOnly: true`, `sameSite: 'lax'`, `maxAge: 3600000`).
+
+- **Request Body**:
 ```json
 {
-  "first_name": "Ana",
-  "last_name": "Pérez",
-  "email": "formato_invalido",
+  "email": "ana@mail.com",
   "password": "Secreta123"
 }
 ```
-**Response 400 Bad Request**:
+- **Response 200 OK** (Setea Cookie `currentUser`):
 ```json
 {
-  "status": "error",
-  "message": "Formato de email inválido"
+  "status": "success",
+  "message": "Login correcto"
 }
 ```
-
-##### 🔴 Caso 4: Email ya Registrado (`409 Conflict`)
-**Response 409 Conflict**:
+- **Response 401 Unauthorized** (Mensaje genérico cuando las credenciales son incorrectas):
 ```json
 {
   "status": "error",
-  "message": "El email ya está registrado"
+  "message": "Credenciales inválidas"
 }
 ```
 
 ---
 
-### 2. Estado de Salud del Servidor (`GET /api/health`)
-- **Respuesta esperada** (`200 OK`):
-```json
-{
-  "status": "ok",
-  "message": "Servidor activo"
-}
-```
+### 3. Usuario Actual Protegido (`GET /api/sessions/current`)
+Ruta protegida por `authMiddleware`. Lee la cookie `currentUser`, valida la firma JWT y devuelve los datos seguros del usuario sin contraseña.
 
-### 3. Listado de Eventos Deportivos (`GET /api/events`)
-- **Respuesta esperada** (`200 OK`):
+- **Request Header**: Cookie `currentUser=<jwt_token>`
+- **Response 200 OK**:
 ```json
 {
   "status": "success",
-  "message": "Eventos deportivos obtenidos con éxito",
-  "payload": []
+  "payload": {
+    "id": "665f2a9b1c2d3e4f5a6b7c8d",
+    "email": "ana@mail.com",
+    "role": "user"
+  }
+}
+```
+- **Response 401 Unauthorized** (Sin cookie o token expirado/alterado):
+```json
+{
+  "status": "error",
+  "message": "No autenticado"
+}
+```
+
+---
+
+### 4. Cierre de Sesión (`POST /api/sessions/logout`)
+Elimina la cookie `currentUser` en el navegador del cliente.
+
+- **Response 200 OK**:
+```json
+{
+  "status": "success",
+  "message": "Sesión cerrada"
 }
 ```
