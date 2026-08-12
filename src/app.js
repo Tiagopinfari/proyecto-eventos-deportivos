@@ -1,4 +1,5 @@
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import eventsRouter from './routes/events.router.js';
 import sessionsRouter from './routes/sessions.router.js';
 import loggerMiddleware from './middlewares/logger.middleware.js';
@@ -6,9 +7,10 @@ import errorHandlerMiddleware from './middlewares/error.middleware.js';
 
 const app = express();
 
-// Middlewares globales de formateo de datos y logging
+// Middlewares globales de formateo de datos, cookies y logging
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use(loggerMiddleware);
 
 // Endpoint de verificación de estado del servidor
