@@ -1,33 +1,60 @@
-import { verifyToken } from '../utils/jwt.js';
-import CustomError from '../utils/custom-error.js';
+import passport from 'passport';
 
 /**
- * Middleware para proteger rutas autenticadas.
- * Verifica la existencia y validez de la cookie HTTP-Only 'currentUser'.
+ * Middleware wrapper personalizado para invocar estrategias de Passport.js
+ * y estandarizar las respuestas JSON y códigos de estado HTTP requeridos.
+ * @param {string} strategy - Nombre de la estrategia ('register', 'login', 'current')
  */
-export const authMiddleware = (req, res, next) => {
-  let token = req.cookies?.currentUser;
+export const passportCall = (strategy) => {
+  return (req, res, next) => {
+    passport.authenticate(strategy, { session: false }, (err, user, info) => {
+      if (err) {
+        return next(err);
+      }
 
-  // Soporte secundario por si se envía mediante Bearer token en Header
-  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-    token = req.headers.authorization.split(' ')[1];
-  }
+      if (!user) {
+        const message = info?.message || 'No autenticado';
 
-  if (!token) {
-    return next(new CustomError('No autenticado', 401));
-  }
+        // Manejo específico de códigos HTTP para la estrategia register
+        if (strategy === 'register') {
+          if (message === 'El email ya está registrado') {
+            return res.status(409).json({
+              status: 'error',
+              message
+            });
+          }
+          return res.status(400).json({
+            status: 'error',
+            message
+          });
+        }
 
-  try {
-    const decoded = verifyToken(token);
-    req.user = {
-      id: decoded.id,
-      email: decoded.email,
-      role: decoded.role
-    };
-    next();
-  } catch (error) {
-    return next(new CustomError('No autenticado', 401));
-  }
+        // Manejo específico de códigos HTTP para la estrategia login
+        if (strategy === 'login') {
+          return res.status(401).json({
+            status: 'error',
+            message: 'Credenciales inválidas'
+          });
+        }
+
+        // Manejo específico de códigos HTTP para la estrategia current
+        if (strategy === 'current') {
+          return res.status(401).json({
+            status: 'error',
+            message: 'No autenticado'
+          });
+        }
+
+        return res.status(401).json({
+          status: 'error',
+          message
+        });
+      }
+
+      req.user = user;
+      return next();
+    })(req, res, next);
+  };
 };
 
-export default authMiddleware;
+export default passportCall;

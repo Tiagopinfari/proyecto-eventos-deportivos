@@ -1,5 +1,7 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
+import passport from 'passport';
+import initializePassport from './config/passport.config.js';
 import eventsRouter from './routes/events.router.js';
 import sessionsRouter from './routes/sessions.router.js';
 import loggerMiddleware from './middlewares/logger.middleware.js';
@@ -11,6 +13,11 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Inicialización centralizada de Passport.js
+initializePassport();
+app.use(passport.initialize());
+
 app.use(loggerMiddleware);
 
 // Endpoint de verificación de estado del servidor
