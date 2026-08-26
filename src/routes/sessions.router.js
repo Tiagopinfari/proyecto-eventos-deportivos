@@ -1,20 +1,20 @@
 import { Router } from 'express';
 import { getSessionStatus, login, register, getCurrentUser, logout } from '../controllers/sessions.controller.js';
-import authMiddleware from '../middlewares/auth.middleware.js';
+import { passportCall } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
 // GET /api/sessions - Estado del módulo de sesiones
 router.get('/', getSessionStatus);
 
-// POST /api/sessions/register - Registro de usuarios
-router.post('/register', register);
+// POST /api/sessions/register - Delegado a la estrategia 'register' de Passport
+router.post('/register', passportCall('register'), register);
 
-// POST /api/sessions/login - Inicio de sesión (devuelve cookie HttpOnly currentUser)
-router.post('/login', login);
+// POST /api/sessions/login - Delegado a la estrategia 'login' de Passport
+router.post('/login', passportCall('login'), login);
 
-// GET /api/sessions/current - Obtiene el usuario autenticado en la sesión actual
-router.get('/current', authMiddleware, getCurrentUser);
+// GET /api/sessions/current - Delegado a la estrategia 'current' de Passport (JWT)
+router.get('/current', passportCall('current'), getCurrentUser);
 
 // POST /api/sessions/logout - Cierra la sesión y elimina la cookie currentUser
 router.post('/logout', logout);
