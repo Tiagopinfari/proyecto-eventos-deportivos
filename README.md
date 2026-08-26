@@ -2,7 +2,7 @@
 
 ¡Bienvenido a **SportEventHub**! Este proyecto es la API backend para una plataforma de gestión de eventos deportivos, inscripciones y tickets/cupos. Permite organizar torneos, maratones, partidos, competencias y talleres deportivos, conectando a deportistas con organizadores.
 
-Este desarrollo corresponde al proyecto de **Backend II**, implementando una arquitectura profesional por capas con el patrón Repository, Data Access Objects (DAO), Servicios, Controladores, Middlewares, Autenticación basada en **JWT y cookies HttpOnly**, Hashing de contraseñas con `bcrypt` y Configuración centralizada.
+Este desarrollo corresponde al proyecto de **Backend II**, implementando una arquitectura profesional por capas con el patrón Repository, Data Access Objects (DAO), Servicios, Controladores, Middlewares, Autenticación centralizada mediante **Passport.js** (estrategias `register`, `login` y `current`), **JWT en cookies HttpOnly**, Hashing de contraseñas con `bcrypt` y Configuración centralizada.
 
 ---
 
@@ -21,9 +21,32 @@ Este desarrollo corresponde al proyecto de **Backend II**, implementando una arq
 - **Runtime**: [Node.js](https://nodejs.org/) (Módulos ESM - `import/export`)
 - **Framework**: [Express.js](https://expressjs.com/)
 - **Base de Datos**: [MongoDB](https://www.mongodb.com/) con [Mongoose ODM](https://mongoosejs.com/)
-- **Autenticación y Seguridad**: [jsonwebtoken](https://www.npmjs.com/package/jsonwebtoken), [cookie-parser](https://www.npmjs.com/package/cookie-parser), [bcryptjs](https://www.npmjs.com/package/bcryptjs)
+- **Autenticación Centralizada**: [Passport.js](http://www.passportjs.org/) (`passport-local`, `passport-jwt`)
+- **Seguridad**: [jsonwebtoken](https://www.npmjs.com/package/jsonwebtoken), [cookie-parser](https://www.npmjs.com/package/cookie-parser), [bcryptjs](https://www.npmjs.com/package/bcryptjs)
 - **Variables de Entorno**: [dotenv](https://www.npmjs.com/package/dotenv)
 - **Gestor de paquetes**: `npm`
+
+---
+
+## 🛡️ Autenticación y Estrategias de Passport.js
+
+La autenticación está centralizada en `src/config/passport.config.js`:
+
+1. **Estrategia `'register'` (LocalStrategy)**:
+   - Valida campos obligatorios, formato de email y longitud de clave.
+   - Normaliza el correo (`trim()` + `toLowerCase()`).
+   - Verifica unicidad de email (rechaza duplicados).
+   - Hashea la contraseña con `bcryptjs`.
+   - Asigna de forma segura el rol por defecto `user`.
+2. **Estrategia `'login'` (LocalStrategy)**:
+   - Valida credenciales contra MongoDB y `bcryptjs`.
+   - Ante credenciales inválidas, responde con mensaje genérico `"Credenciales inválidas"` (HTTP 401).
+   - Tras el éxito de la estrategia, el **controlador** genera el token JWT y setea la cookie `currentUser`.
+3. **Estrategia `'current'` (JWTStrategy)**:
+   - Extrae y valida el JWT desde la cookie HttpOnly `currentUser`.
+   - Inyecta los datos seguros `{ id, email, role }` en `req.user`.
+4. **Preparación para Providers Externos (OAuth)**:
+   - La arquitectura modular de `passport.config.js` permite añadir proveedores externos (Google, GitHub, etc.) directamente en dicho archivo sin requerir modificaciones en `app.js` ni en el core de la aplicación.
 
 ---
 
@@ -32,18 +55,19 @@ Este desarrollo corresponde al proyecto de **Backend II**, implementando una arq
 ```text
 proyecto-eventos-deportivos/
 ├── src/
-│   ├── app.js                 # Configuración de Express, cookieParser, middlewares y rutas
+│   ├── app.js                 # Configuración de Express, inicialización de Passport y rutas
 │   ├── server.js              # Punto de entrada, conexión a BD e inicio del servidor HTTP
-│   ├── config/                # Ajustes centralizados y conexión a MongoDB
+│   ├── config/                # Ajustes centralizados, base de datos y estrategias Passport
 │   │   ├── config.js          # Variables de entorno procesadas por dotenv
-│   │   └── db.js              # Conexión Mongoose a la base de datos
+│   │   ├── db.js              # Conexión Mongoose a la base de datos
+│   │   └── passport.config.js # Estrategias 'register', 'login' y 'current' centralizadas
 │   ├── routes/                # Capa de Enrutamiento (Events, Sessions)
 │   │   ├── events.router.js
-│   │   └── sessions.router.js # Rutas de registro, login, current y logout
-│   ├── controllers/           # Capa de Controladores (Request / Response / Cookies)
+│   │   └── sessions.router.js # Rutas de sesiones delegadas en Passport
+│   ├── controllers/           # Capa de Controladores (Generación de JWT / Cookies)
 │   │   ├── events.controller.js
 │   │   └── sessions.controller.js
-│   ├── services/              # Capa de Lógica de Negocio (Validaciones, JWT, Hash)
+│   ├── services/              # Capa de Lógica de Negocio
 │   │   ├── events.service.js
 │   │   └── sessions.service.js
 │   ├── repositories/          # Capa de Abstracción de Persistencia (Patrón Repository)
@@ -56,16 +80,16 @@ proyecto-eventos-deportivos/
 │   │   ├── User.js            # Modelo base de Usuario (first_name, last_name, email, password, role)
 │   │   └── Event.js           # Modelo base de Evento Deportivo
 │   ├── middlewares/           # Middlewares de Express
-│   │   ├── auth.middleware.js # Verificación de cookie HttpOnly 'currentUser' y JWT
+│   │   ├── auth.middleware.js # Wrapper passportCall para manejo estándar de estrategias
 │   │   ├── logger.middleware.js # Log de peticiones HTTP
 │   │   └── error.middleware.js  # Gestor global de errores
 │   └── utils/                 # Herramientas y utilidades compartidas
-│       ├── jwt.js             # Helper para firmar y verificar tokens JWT (generateToken, verifyToken)
-│       ├── hash.js            # Helper reutilizable de bcryptjs (createHash, isValidPassword)
+│       ├── jwt.js             # Helper para firmar y verificar tokens JWT
+│       ├── hash.js            # Helper de hashing con bcryptjs (createHash, isValidPassword)
 │       ├── custom-error.js    # Manejo de excepciones con código HTTP
 │       └── response-handler.js# Respuestas JSON estandarizadas
 ├── .env.example               # Ejemplos de variables de entorno
-├── .gitignore                 # Exclusión de archivos sensibles e instalados (.env y node_modules)
+├── .gitignore                 # Exclusión de archivos sensibles (.env y node_modules)
 ├── package.json               # Configuración de proyecto en formato ESM y dependencias
 └── README.md                  # Documentación del proyecto
 ```
@@ -114,14 +138,14 @@ El servidor estará escuchando por defecto en: `http://localhost:8080`
 
 ## 🌐 Tabla de Rutas y Endpoints Disponibles
 
-| Método | Ruta | Descripción | Requiere Auth | Cookie |
+| Método | Ruta | Descripción | Estrategia Passport | Cookie |
 | :--- | :--- | :--- | :---: | :---: |
-| `GET` | `/api/health` | Estado de salud del servidor | No | No |
-| `GET` | `/api/events` | Listado de eventos deportivos | No | No |
-| `POST` | `/api/sessions/register` | Registro seguro de usuarios | No | No |
-| `POST` | `/api/sessions/login` | Inicio de sesión y generación de JWT | No | Setea `currentUser` |
-| `GET` | `/api/sessions/current` | Obtiene el usuario autenticado | Sí | Requiere `currentUser` |
-| `POST` | `/api/sessions/logout` | Cierre de sesión | No | Borra `currentUser` |
+| `GET` | `/api/health` | Estado de salud del servidor | - | - |
+| `GET` | `/api/events` | Listado de eventos deportivos | - | - |
+| `POST` | `/api/sessions/register` | Registro seguro de usuarios | `passport.authenticate('register')` | - |
+| `POST` | `/api/sessions/login` | Inicio de sesión y JWT en Cookie | `passport.authenticate('login')` | Setea `currentUser` |
+| `GET` | `/api/sessions/current` | Obtiene el usuario autenticado | `passport.authenticate('current')` | Requiere `currentUser` |
+| `POST` | `/api/sessions/logout` | Cierre de sesión | - | Borra `currentUser` |
 
 ---
 
@@ -154,8 +178,6 @@ El servidor estará escuchando por defecto en: `http://localhost:8080`
 ---
 
 ### 2. Inicio de Sesión (`POST /api/sessions/login`)
-Valida el correo y la contraseña. Si son correctos, firma un JWT y setea la cookie `currentUser` (`httpOnly: true`, `sameSite: 'lax'`, `maxAge: 3600000`).
-
 - **Request Body**:
 ```json
 {
@@ -163,14 +185,14 @@ Valida el correo y la contraseña. Si son correctos, firma un JWT y setea la coo
   "password": "Secreta123"
 }
 ```
-- **Response 200 OK** (Setea Cookie `currentUser`):
+- **Response 200 OK** (Setea Cookie HttpOnly `currentUser`):
 ```json
 {
   "status": "success",
   "message": "Login correcto"
 }
 ```
-- **Response 401 Unauthorized** (Mensaje genérico cuando las credenciales son incorrectas):
+- **Response 401 Unauthorized** (Credenciales inválidas):
 ```json
 {
   "status": "error",
@@ -181,8 +203,6 @@ Valida el correo y la contraseña. Si son correctos, firma un JWT y setea la coo
 ---
 
 ### 3. Usuario Actual Protegido (`GET /api/sessions/current`)
-Ruta protegida por `authMiddleware`. Lee la cookie `currentUser`, valida la firma JWT y devuelve los datos seguros del usuario sin contraseña.
-
 - **Request Header**: Cookie `currentUser=<jwt_token>`
 - **Response 200 OK**:
 ```json
@@ -206,8 +226,6 @@ Ruta protegida por `authMiddleware`. Lee la cookie `currentUser`, valida la firm
 ---
 
 ### 4. Cierre de Sesión (`POST /api/sessions/logout`)
-Elimina la cookie `currentUser` en el navegador del cliente.
-
 - **Response 200 OK**:
 ```json
 {
