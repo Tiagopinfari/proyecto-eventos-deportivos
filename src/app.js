@@ -4,6 +4,7 @@ import passport from 'passport';
 import initializePassport from './config/passport.config.js';
 import eventsRouter from './routes/events.router.js';
 import sessionsRouter from './routes/sessions.router.js';
+import usersRouter from './routes/users.router.js';
 import loggerMiddleware from './middlewares/logger.middleware.js';
 import errorHandlerMiddleware from './middlewares/error.middleware.js';
 
@@ -31,6 +32,7 @@ app.get('/api/health', (req, res) => {
 // Enrutadores principales
 app.use('/api/events', eventsRouter);
 app.use('/api/sessions', sessionsRouter);
+app.use('/api/users', usersRouter);
 
 // Middleware global de manejo de errores
 app.use(errorHandlerMiddleware);
