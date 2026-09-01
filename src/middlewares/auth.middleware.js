@@ -57,4 +57,9 @@ export const passportCall = (strategy) => {
   };
 };
 
-export default passportCall;
+/**
+ * Middleware reutilizable para autenticar solicitudes usando la estrategia 'current'
+ */
+export const authMiddleware = passportCall('current');
+
+export default authMiddleware;
