@@ -39,7 +39,8 @@ const eventSchema = new mongoose.Schema(
     },
     organizer: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'users'
+      ref: 'users',
+      required: true
     },
     status: {
       type: String,
@@ -51,6 +52,16 @@ const eventSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+// Mapeo automático de _id a id para respuestas limpias
+eventSchema.set('toJSON', {
+  transform: (doc, ret) => {
+    ret.id = ret._id ? ret._id.toString() : ret.id;
+    delete ret._id;
+    delete ret.__v;
+    return ret;
+  }
+});
 
 const EventModel = mongoose.model(eventCollection, eventSchema);
 
