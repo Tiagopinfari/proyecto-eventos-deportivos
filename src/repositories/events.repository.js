@@ -5,6 +5,10 @@ export class EventsRepository {
     this.dao = dao;
   }
 
+  async getPaginatedEvents({ filter, page, limit, sort }) {
+    return await this.dao.getPaginated({ filter, page, limit, sort });
+  }
+
   async getEvents(filter) {
     return await this.dao.getAll(filter);
   }
@@ -19,6 +23,10 @@ export class EventsRepository {
 
   async updateEvent(id, eventData) {
     return await this.dao.update(id, eventData);
+  }
+
+  async softDeleteEvent(id) {
+    return await this.dao.softDelete(id);
   }
 
   async deleteEvent(id) {

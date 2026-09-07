@@ -6,46 +6,53 @@ const eventSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: true,
+      required: [true, 'El título es obligatorio'],
       trim: true
     },
     description: {
       type: String,
-      required: true,
+      required: [true, 'La descripción es obligatoria'],
       trim: true
     },
-    sport_category: {
+    category: {
       type: String,
-      required: true,
-      trim: true
+      required: [true, 'La categoría es obligatoria'],
+      trim: true,
+      index: true
     },
     date: {
       type: Date,
-      required: true
+      required: [true, 'La fecha del evento es obligatoria'],
+      index: true
     },
     location: {
       type: String,
-      required: true,
+      required: [true, 'La ubicación es obligatoria'],
       trim: true
     },
     capacity: {
       type: Number,
-      required: true,
-      min: 1
+      required: [true, 'La capacidad es obligatoria'],
+      min: [1, 'La capacidad debe ser mayor a 0']
     },
     price: {
       type: Number,
-      default: 0
+      default: 0,
+      min: [0, 'El precio no puede ser negativo']
     },
     organizer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'users',
-      required: true
+      required: [true, 'El organizador es obligatorio']
     },
     status: {
       type: String,
-      enum: ['active', 'cancelled', 'completed'],
-      default: 'active'
+      enum: {
+        values: ['draft', 'published', 'cancelled', 'finished'],
+        message: '{VALUE} no es un estado válido de evento (draft, published, cancelled, finished)'
+      },
+      default: 'published',
+      index: true
     }
   },
   {
