@@ -21,6 +21,9 @@ export class EventsService {
       sort
     } = queryParams;
 
+    const numericPage = Math.max(1, Number(page) || 1);
+    const numericLimit = Math.max(1, Number(limit) || 10);
+
     const filter = {};
 
     // Filtro por status
@@ -80,8 +83,8 @@ export class EventsService {
 
     return await this.repository.getPaginatedEvents({
       filter,
-      page,
-      limit,
+      page: numericPage,
+      limit: numericLimit,
       sort: sortOption
     });
   }
