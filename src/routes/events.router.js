@@ -7,6 +7,10 @@ import {
   updateEventStatus,
   deleteEvent
 } from '../controllers/events.controller.js';
+import {
+  createTicket,
+  getEventTickets
+} from '../controllers/tickets.controller.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { authorize } from '../middlewares/authorize.middleware.js';
 
@@ -27,5 +31,12 @@ router.patch('/:id/status', authMiddleware, authorize(['organizer', 'admin']), u
 
 // Cancelar evento (soft-delete, organizer solo eventos propios, admin cualquiera)
 router.delete('/:id', authMiddleware, authorize(['organizer', 'admin']), deleteEvent);
+
+// --- Subrutas de Tickets / Inscripciones (Pre-entrega 7) ---
+// Crear ticket / inscripción a un evento (Cualquier usuario autenticado)
+router.post('/:eid/tickets', authMiddleware, createTicket);
+
+// Consultar tickets de un evento (Solo organizer dueño del evento o admin)
+router.get('/:eid/tickets', authMiddleware, authorize(['organizer', 'admin']), getEventTickets);
 
 export default router;
