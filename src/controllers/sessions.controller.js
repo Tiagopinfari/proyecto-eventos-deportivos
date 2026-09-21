@@ -1,6 +1,7 @@
 import config from '../config/config.js';
 import { generateToken } from '../utils/jwt.js';
 import sessionsService from '../services/sessions.service.js';
+import UserDTO from '../dto/user.dto.js';
 
 export const getSessionStatus = async (req, res, next) => {
   try {
@@ -15,19 +16,19 @@ export const getSessionStatus = async (req, res, next) => {
 };
 
 /**
- * Tras la autenticación de la estrategia 'register', devuelve el nuevo usuario creado
+ * Tras la autenticación de la estrategia 'register', devuelve el nuevo usuario formateado con UserDTO
  */
 export const register = async (req, res, next) => {
   try {
-    const user = req.user;
+    const userDto = UserDTO.from(req.user);
     return res.status(201).json({
       status: 'success',
       payload: {
-        id: user._id ? user._id.toString() : user.id,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        email: user.email,
-        role: user.role
+        id: userDto.id,
+        first_name: userDto.first_name,
+        last_name: userDto.last_name,
+        email: userDto.email,
+        role: userDto.role
       }
     });
   } catch (error) {
@@ -70,16 +71,17 @@ export const login = async (req, res, next) => {
 };
 
 /**
- * Tras la validación de la estrategia 'current', devuelve los datos seguros del usuario
+ * Tras la validación de la estrategia 'current', devuelve los datos seguros del usuario mediante UserDTO
  */
 export const getCurrentUser = async (req, res, next) => {
   try {
+    const userDto = UserDTO.from(req.user);
     return res.status(200).json({
       status: 'success',
       payload: {
-        id: req.user.id,
-        email: req.user.email,
-        role: req.user.role
+        id: userDto.id,
+        email: userDto.email,
+        role: userDto.role
       }
     });
   } catch (error) {

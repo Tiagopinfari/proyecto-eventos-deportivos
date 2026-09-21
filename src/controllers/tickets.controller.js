@@ -1,4 +1,5 @@
 import ticketsService from '../services/tickets.service.js';
+import TicketDTO from '../dto/ticket.dto.js';
 
 /**
  * Crea un ticket / inscripción para un evento (Autenticado)
@@ -16,7 +17,7 @@ export const createTicket = async (req, res, next) => {
     return res.status(201).json({
       status: 'success',
       message: 'Inscripción realizada con éxito',
-      payload: newTicket
+      payload: TicketDTO.from(newTicket)
     });
   } catch (error) {
     next(error);
@@ -32,7 +33,7 @@ export const getMyTickets = async (req, res, next) => {
     return res.status(200).json({
       status: 'success',
       message: 'Tickets obtenidos con éxito',
-      payload: tickets
+      payload: TicketDTO.from(tickets)
     });
   } catch (error) {
     next(error);
@@ -49,7 +50,7 @@ export const getEventTickets = async (req, res, next) => {
     return res.status(200).json({
       status: 'success',
       message: 'Tickets del evento obtenidos con éxito',
-      payload: tickets
+      payload: TicketDTO.from(tickets)
     });
   } catch (error) {
     next(error);
@@ -66,7 +67,7 @@ export const cancelTicket = async (req, res, next) => {
     return res.status(200).json({
       status: 'success',
       message: 'Ticket cancelado con éxito',
-      payload: cancelledTicket
+      payload: TicketDTO.from(cancelledTicket)
     });
   } catch (error) {
     next(error);

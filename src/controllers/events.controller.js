@@ -1,15 +1,16 @@
 import eventsService from '../services/events.service.js';
+import EventDTO from '../dto/event.dto.js';
 
 /**
  * Listado de eventos con filtros, paginación y ordenamiento (Público)
- * Respuesta incluye: data, page, limit, total, totalPages
+ * Formateado a través de EventDTO
  */
 export const getEvents = async (req, res, next) => {
   try {
     const result = await eventsService.fetchAllEvents(req.query);
     return res.status(200).json({
       status: 'success',
-      data: result.data,
+      data: EventDTO.from(result.data),
       page: result.page,
       limit: result.limit,
       total: result.total,
@@ -28,7 +29,7 @@ export const getEventById = async (req, res, next) => {
     const event = await eventsService.fetchEventById(req.params.id);
     return res.status(200).json({
       status: 'success',
-      payload: event
+      payload: EventDTO.from(event)
     });
   } catch (error) {
     next(error);
@@ -37,7 +38,6 @@ export const getEventById = async (req, res, next) => {
 
 /**
  * Creación de evento (organizer, admin)
- * El organizer se asigna automáticamente desde req.user.id
  */
 export const createEvent = async (req, res, next) => {
   try {
@@ -45,7 +45,7 @@ export const createEvent = async (req, res, next) => {
     return res.status(201).json({
       status: 'success',
       message: 'Evento deportivo creado con éxito',
-      payload: newEvent
+      payload: EventDTO.from(newEvent)
     });
   } catch (error) {
     next(error);
@@ -61,7 +61,7 @@ export const updateEvent = async (req, res, next) => {
     return res.status(200).json({
       status: 'success',
       message: 'Evento deportivo actualizado con éxito',
-      payload: updatedEvent
+      payload: EventDTO.from(updatedEvent)
     });
   } catch (error) {
     next(error);
@@ -78,7 +78,7 @@ export const updateEventStatus = async (req, res, next) => {
     return res.status(200).json({
       status: 'success',
       message: `Estado del evento actualizado a '${status}'`,
-      payload: updatedEvent
+      payload: EventDTO.from(updatedEvent)
     });
   } catch (error) {
     next(error);
@@ -94,7 +94,7 @@ export const deleteEvent = async (req, res, next) => {
     return res.status(200).json({
       status: 'success',
       message: 'Evento deportivo cancelado con éxito',
-      payload: cancelledEvent
+      payload: EventDTO.from(cancelledEvent)
     });
   } catch (error) {
     next(error);
