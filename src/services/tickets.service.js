@@ -1,6 +1,7 @@
 import ticketsRepository from '../repositories/tickets.repository.js';
 import eventsRepository from '../repositories/events.repository.js';
 import mailService from './mail.service.js';
+import TicketDTO from '../dto/ticket.dto.js';
 import CustomError from '../utils/custom-error.js';
 
 export class TicketsService {
@@ -24,7 +25,7 @@ export class TicketsService {
   }
 
   /**
-   * Crea una inscripción / ticket para un evento validando cupos y duplicados
+   * Crea una inscripción / ticket para un evento validando cupos, fechas vigentes y duplicados
    */
   async createTicket({ eventId, user, quantity = 1 }) {
     if (!eventId) {
@@ -50,16 +51,24 @@ export class TicketsService {
       );
     }
 
-    // 3. Validar que el usuario no tenga ya un ticket activo para este evento
-    const activeTicket = await this.repository.getActiveUserTicket(user.id, eventId);
-    if (activeTicket) {
+    // 3. Control de fecha vigente: el evento debe tener fecha futura (event.date > Date.now())
+    if (new Date(event.date) <= new Date()) {
       throw new CustomError(
-        'Ya tenés una inscripción activa para este evento deportivo',
+        'No se pueden reservar cupos para un evento cuya fecha ya pasó o ha finalizado',
         400
       );
     }
 
-    // 4. Validar cupos disponibles (solo cuentan tickets activos; los cancelados no ocupan cupo)
+    // 4. Validar que el usuario no tenga ya un ticket activo para este evento (409 Conflict)
+    const activeTicket = await this.repository.getActiveUserTicket(user.id, eventId);
+    if (activeTicket) {
+      throw new CustomError(
+        'Ya tenés una inscripción activa para este evento deportivo',
+        409
+      );
+    }
+
+    // 5. Validar cupos disponibles (solo cuentan tickets activos; los cancelados no ocupan cupo)
     const occupiedCapacity = await this.repository.getOccupiedCapacity(eventId);
     const availableCapacity = event.capacity - occupiedCapacity;
 
@@ -70,7 +79,7 @@ export class TicketsService {
       );
     }
 
-    // 5. Generar código de reserva y persistir ticket
+    // 6. Generar código de reserva y persistir ticket
     const reservationCode = this._generateReservationCode();
     const newTicket = await this.repository.createTicket({
       user: user.id,
@@ -80,7 +89,7 @@ export class TicketsService {
       status: 'confirmed'
     });
 
-    const formattedTicket = {
+    const ticketDto = TicketDTO.from({
       id: newTicket._id ? newTicket._id.toString() : newTicket.id,
       user: user.id,
       event: eventId,
@@ -88,31 +97,32 @@ export class TicketsService {
       reservationCode,
       status: 'confirmed',
       createdAt: newTicket.createdAt || new Date()
-    };
+    });
 
-    // 6. Enviar notificación por email mediante Nodemailer
+    // 7. Enviar notificación por email mediante Nodemailer
     try {
       await this.mailer.sendTicketConfirmationEmail({
         to: user.email,
         user,
         event,
-        ticket: formattedTicket
+        ticket: ticketDto
       });
     } catch (mailError) {
-      console.error('[TicketsService] No se pudo enviar el correo de confirmación:', mailError.message);
+      // El fallo en el servidor de correo no cancela la emisión del ticket
     }
 
-    return formattedTicket;
+    return ticketDto;
   }
 
   /**
-   * Consulta los tickets del usuario autenticado (con populate del evento)
+   * Consulta los tickets del usuario autenticado (con populate del evento y DTO)
    */
   async getUserTickets(userId) {
     if (!userId) {
       throw new CustomError('ID de usuario requerido', 400);
     }
-    return await this.repository.getTicketsByUser(userId);
+    const tickets = await this.repository.getTicketsByUser(userId);
+    return TicketDTO.from(tickets);
   }
 
   /**
@@ -137,7 +147,8 @@ export class TicketsService {
       throw new CustomError('No tenés permisos para consultar los tickets de este evento', 403);
     }
 
-    return await this.repository.getTicketsByEvent(eventId);
+    const tickets = await this.repository.getTicketsByEvent(eventId);
+    return TicketDTO.from(tickets);
   }
 
   /**
@@ -156,7 +167,7 @@ export class TicketsService {
     // Control de permisos: dueño del ticket o admin
     const ticketUserId = ticket.user?._id
       ? ticket.user._id.toString()
-      : ticket.user?.toString();
+      : (typeof ticket.user === 'string' ? ticket.user : ticket.user?.id);
 
     if (requestingUser.role !== 'admin' && ticketUserId !== requestingUser.id) {
       throw new CustomError('No tenés permisos para cancelar este ticket', 403);
@@ -168,7 +179,7 @@ export class TicketsService {
     }
 
     const cancelled = await this.repository.cancelTicket(ticketId);
-    return cancelled;
+    return TicketDTO.from(cancelled);
   }
 }
 
