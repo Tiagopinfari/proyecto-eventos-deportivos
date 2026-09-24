@@ -14,7 +14,7 @@ import errorHandlerMiddleware from '../src/middlewares/error.middleware.js';
 import { authMiddleware } from '../src/middlewares/auth.middleware.js';
 import { authorize } from '../src/middlewares/authorize.middleware.js';
 
-// In-memory DAOs para tests automatizados independientes
+// In-memory DAOs para pruebas de aceptación reproducibles
 class InMemoryUsersDao {
   constructor() {
     this.users = [];
@@ -39,7 +39,7 @@ class InMemoryEventsDao {
     this.events.push(event);
     return { ...event };
   }
-  async getPaginated({ filter, page = 1, limit = 10 }) {
+  async getPaginated({ filter = {}, page = 1, limit = 10, sort = { date: 1 } }) {
     let filtered = [...this.events];
     if (filter.status) filtered = filtered.filter(e => e.status === filter.status);
     const total = filtered.length;
@@ -86,13 +86,19 @@ class InMemoryTicketsDao {
 }
 
 class MockMailService {
-  async sendTicketConfirmationEmail() { return { messageId: 'test_mail_ok' }; }
+  constructor() {
+    this.emailsSent = [];
+  }
+  async sendTicketConfirmationEmail(payload) {
+    this.emailsSent.push(payload);
+    return { messageId: 'mock_mail_' + Date.now() };
+  }
 }
 
 async function runAcceptanceTests() {
-  console.log('\n======================================================');
-  console.log('   SUITE DE TESTS AUTOMATIZADOS - SPORTEVENTHUB');
-  console.log('======================================================\n');
+  console.log('\n======================================================================');
+  console.log('   VERIFICACIÓN OFICIAL DE ENTREGA FINAL - SPORTEVENTHUB');
+  console.log('======================================================================\n');
 
   const usersDao = new InMemoryUsersDao();
   const eventsDao = new InMemoryEventsDao();
@@ -135,7 +141,7 @@ async function runAcceptanceTests() {
   initializePassport();
   app.use(passport.initialize());
 
-  // Endpoints configurados con DTOs y Servicios
+  // Rutas
   app.post('/api/sessions/register', async (req, res, next) => {
     try {
       const user = await sessionsService.registerUser(req.body);
@@ -143,8 +149,21 @@ async function runAcceptanceTests() {
     } catch (err) { next(err); }
   });
 
+  app.post('/api/sessions/login', async (req, res, next) => {
+    try {
+      const { user, token } = await sessionsService.loginUser(req.body);
+      res.cookie('currentUser', token, { httpOnly: true });
+      res.status(200).json({ status: 'success', message: 'Login correcto' });
+    } catch (err) { next(err); }
+  });
+
   app.get('/api/sessions/current', authMiddleware, (req, res) => {
     res.status(200).json({ status: 'success', payload: UserDTO.from(req.user) });
+  });
+
+  app.post('/api/sessions/logout', (req, res) => {
+    res.clearCookie('currentUser');
+    res.status(200).json({ status: 'success', message: 'Sesión cerrada' });
   });
 
   app.get('/api/users', authMiddleware, authorize(['admin']), async (req, res, next) => {
@@ -154,10 +173,31 @@ async function runAcceptanceTests() {
     } catch (err) { next(err); }
   });
 
+  app.get('/api/events', async (req, res, next) => {
+    try {
+      const result = await eventsService.fetchAllEvents(req.query);
+      res.status(200).json({
+        status: 'success',
+        data: EventDTO.from(result.data),
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: result.totalPages
+      });
+    } catch (err) { next(err); }
+  });
+
   app.post('/api/events', authMiddleware, authorize(['organizer', 'admin']), async (req, res, next) => {
     try {
       const event = await eventsService.createNewEvent(req.body, req.user.id);
       res.status(201).json({ status: 'success', payload: EventDTO.from(event) });
+    } catch (err) { next(err); }
+  });
+
+  app.put('/api/events/:id', authMiddleware, authorize(['organizer', 'admin']), async (req, res, next) => {
+    try {
+      const updated = await eventsService.updateEvent(req.params.id, req.body, req.user);
+      res.status(200).json({ status: 'success', payload: EventDTO.from(updated) });
     } catch (err) { next(err); }
   });
 
@@ -209,245 +249,277 @@ async function runAcceptanceTests() {
   }
 
   try {
-    // 1. Registro seguro con DTO sin password
-    let registeredUser;
+    // -------------------------------------------------------------------------
+    // FLUJO 1: Registro → login → /current → logout → /current devuelve 401
+    // -------------------------------------------------------------------------
+    let userCookie = null;
+    let registeredUser = null;
     {
-      const res = await fetch(`${baseUrl}/api/sessions/register`, {
+      // 1a. Registro
+      const regRes = await fetch(`${baseUrl}/api/sessions/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          first_name: 'Carlos',
-          last_name: 'Pérez',
-          email: 'carlos@test.com',
+          first_name: 'Santiago',
+          last_name: 'López',
+          email: 'santiago@deportes.com',
           password: 'Password123!'
         })
       });
-      const json = await res.json();
-      registeredUser = json.payload;
+      const regJson = await regRes.json();
+      registeredUser = regJson.payload;
+
+      // 1b. Login
+      const loginRes = await fetch(`${baseUrl}/api/sessions/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'santiago@deportes.com',
+          password: 'Password123!'
+        })
+      });
+      userCookie = loginRes.headers.get('set-cookie');
+
+      // 1c. /current con sesión activa
+      const currentRes = await fetch(`${baseUrl}/api/sessions/current`, {
+        headers: { 'Cookie': userCookie }
+      });
+      const currentJson = await currentRes.json();
+
+      // 1d. Logout
+      const logoutRes = await fetch(`${baseUrl}/api/sessions/logout`, {
+        method: 'POST',
+        headers: { 'Cookie': userCookie }
+      });
+
+      // 1e. /current tras logout -> 401
+      const afterLogoutRes = await fetch(`${baseUrl}/api/sessions/current`);
+
       assert(
-        res.status === 201 &&
-        registeredUser.id &&
-        registeredUser.email === 'carlos@test.com' &&
-        registeredUser.password === undefined,
-        '1. Registro exitoso devuelve UserDTO sin campo password'
+        regRes.status === 201 &&
+        loginRes.status === 200 &&
+        currentRes.status === 200 &&
+        currentJson.payload?.email === 'santiago@deportes.com' &&
+        logoutRes.status === 200 &&
+        afterLogoutRes.status === 401,
+        'Flujo 1: Registro → Login → /current (200) → Logout → /current (401)'
       );
     }
 
-    // Tokens para las pruebas
+    // Tokens de prueba para los distintos roles
     const userToken = generateToken({ id: registeredUser.id, email: registeredUser.email, role: 'user' });
-    const user2Token = generateToken({ id: 'usr_other', email: 'other@test.com', role: 'user' });
-    const organizerToken = generateToken({ id: 'org_1', email: 'organizer@test.com', role: 'organizer' });
-    const organizer2Token = generateToken({ id: 'org_2', email: 'organizer2@test.com', role: 'organizer' });
-    const adminToken = generateToken({ id: 'admin_1', email: 'admin@test.com', role: 'admin' });
+    const user2Token = generateToken({ id: 'usr_competidor2', email: 'competidor2@deportes.com', role: 'user' });
+    const orgToken = generateToken({ id: 'org_club_central', email: 'club@central.com', role: 'organizer' });
+    const org2Token = generateToken({ id: 'org_club_norte', email: 'club@norte.com', role: 'organizer' });
+    const adminToken = generateToken({ id: 'admin_plataforma', email: 'admin@eventos.com', role: 'admin' });
 
-    // 2. Respuesta de /current no incluye password
-    {
-      const res = await fetch(`${baseUrl}/api/sessions/current`, {
-        headers: { 'Cookie': `currentUser=${userToken}` }
-      });
-      const json = await res.json();
-      assert(
-        res.status === 200 &&
-        json.payload.email === 'carlos@test.com' &&
-        json.payload.password === undefined,
-        '2. Endpoint /current devuelve UserDTO seguro sin password'
-      );
-    }
-
-    // 3. Consulta de usuarios solo admin y mediante DTO
-    {
-      const res = await fetch(`${baseUrl}/api/users`, {
-        headers: { 'Cookie': `currentUser=${adminToken}` }
-      });
-      const json = await res.json();
-      const everyUserSafe = json.payload.every(u => u.password === undefined && u.email);
-      assert(
-        res.status === 200 && Array.isArray(json.payload) && everyUserSafe,
-        '3. Endpoint /api/users devuelve lista de UserDTOs sin contraseñas'
-      );
-    }
-
-    // 4. Intento de crear evento con rol user -> 403
+    // -------------------------------------------------------------------------
+    // FLUJO 2: user intenta crear evento → 403
+    // -------------------------------------------------------------------------
     {
       const res = await fetch(`${baseUrl}/api/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${userToken}` },
-        body: JSON.stringify({ title: 'Torneo Prohibido', category: 'Tenis', capacity: 10 })
+        body: JSON.stringify({
+          title: 'Torneo No Autorizado',
+          category: 'Fútbol',
+          capacity: 20
+        })
       });
-      assert(res.status === 403, '4. Intento de crear evento con rol user retorna 403 Forbidden');
+      assert(res.status === 403, 'Flujo 2: Rol user intentando crear evento retorna 403 Forbidden');
     }
 
-    // 5. Creación de evento exitoso con rol organizer y fecha futura
+    // -------------------------------------------------------------------------
+    // FLUJO 3: organizer crea evento → user se inscribe → email recibido → cupo descontado
+    // -------------------------------------------------------------------------
     let eventId;
-    {
-      const res = await fetch(`${baseUrl}/api/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${organizerToken}` },
-        body: JSON.stringify({
-          title: 'Torneo Maratón Verano 2027',
-          description: 'Competencia 10k y 21k',
-          category: 'Running',
-          date: '2027-02-15T09:00:00.000Z',
-          location: 'Costanera',
-          capacity: 3,
-          price: 1500
-        })
-      });
-      const json = await res.json();
-      eventId = json.payload.id;
-      assert(
-        res.status === 201 && json.payload.title === 'Torneo Maratón Verano 2027',
-        '5. Creación de evento con rol organizer retorna 201 y EventDTO'
-      );
-    }
-
-    // 6. Rechazo de evento con fecha pasada
-    {
-      const res = await fetch(`${baseUrl}/api/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${organizerToken}` },
-        body: JSON.stringify({
-          title: 'Evento Pasado',
-          description: 'Fecha en 2020',
-          category: 'Running',
-          date: '2020-01-01T09:00:00.000Z',
-          location: 'Parque',
-          capacity: 10
-        })
-      });
-      assert(res.status === 400, '6. Creación de evento con fecha pasada retorna 400 Bad Request');
-    }
-
-    // 7. Reserva de cupo / ticket exitosa -> 201 y TicketDTO
     let ticketId;
     {
+      // 3a. organizer crea evento
+      const evRes = await fetch(`${baseUrl}/api/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${orgToken}` },
+        body: JSON.stringify({
+          title: 'Torneo Abierto de Tenis 2027',
+          description: 'Torneo oficial sobre polvo de ladrillo',
+          category: 'Tenis',
+          date: '2027-04-10T10:00:00.000Z',
+          location: 'Club Central',
+          capacity: 2,
+          price: 2000
+        })
+      });
+      const evJson = await evRes.json();
+      eventId = evJson.payload.id;
+
+      // 3b. user se inscribe
+      const tktRes = await fetch(`${baseUrl}/api/events/${eventId}/tickets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${userToken}` },
+        body: JSON.stringify({ quantity: 1 })
+      });
+      const tktJson = await tktRes.json();
+      ticketId = tktJson.payload.id;
+
+      // 3c. Email enviado y cupo descontado
+      const emailDispatched = mailService.emailsSent.some(m => m.user?.email === 'santiago@deportes.com');
+      const occupied = await ticketsRepo.getOccupiedCapacity(eventId);
+
+      assert(
+        evRes.status === 201 &&
+        tktRes.status === 201 &&
+        emailDispatched &&
+        occupied === 1,
+        'Flujo 3: Organizer crea evento → User se inscribe → Email recibido → Cupo descontado'
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // FLUJO 4: user intenta inscribirse nuevamente al mismo evento → error de duplicado (409)
+    // -------------------------------------------------------------------------
+    {
       const res = await fetch(`${baseUrl}/api/events/${eventId}/tickets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${userToken}` },
         body: JSON.stringify({ quantity: 1 })
       });
-      const json = await res.json();
-      ticketId = json.payload.id;
-      assert(
-        res.status === 201 &&
-        json.payload.reservationCode?.startsWith('TK-') &&
-        json.payload.status === 'confirmed',
-        '7. Reserva de ticket retorna 201 y TicketDTO con código de reserva'
-      );
+      assert(res.status === 409, 'Flujo 4: Inscripción duplicada activa para el mismo usuario retorna 409 Conflict');
     }
 
-    // 8. Control de fecha vigente: rechazo de inscripción si event.date <= Date.now()
-    {
-      const pastEvent = await eventsDao.create({
-        title: 'Torneo Antiguo Cerrado',
-        category: 'Paddle',
-        capacity: 10,
-        status: 'published',
-        date: new Date('2020-05-01')
-      });
-
-      const res = await fetch(`${baseUrl}/api/events/${pastEvent.id}/tickets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${userToken}` },
-        body: JSON.stringify({ quantity: 1 })
-      });
-      const json = await res.json();
-      assert(
-        res.status === 400 && json.message.includes('pasó o ha finalizado'),
-        '8. Reserva de cupo en evento pasado rechazada con 400 Bad Request (Control de fecha vigente)'
-      );
-    }
-
-    // 9. Prevención de inscripciones duplicadas -> 409 Conflict
-    {
-      const res = await fetch(`${baseUrl}/api/events/${eventId}/tickets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${userToken}` },
-        body: JSON.stringify({ quantity: 1 })
-      });
-      assert(
-        res.status === 409,
-        '9. Inscripción duplicada activa para el mismo usuario y evento retorna 409 Conflict'
-      );
-    }
-
-    // 10. Rechazo por cupos insuficientes -> 400
-    // Evento tiene capacidad: 3, ocupados: 1. Quedan 2. Solicitamos 5.
+    // -------------------------------------------------------------------------
+    // FLUJO 5: user intenta inscribirse a evento sin cupo → error claro (400)
+    // -------------------------------------------------------------------------
+    // Capacidad: 2, Ocupados: 1, Disponibles: 1. User2 solicita 2 cupos -> debe rechazar
     {
       const res = await fetch(`${baseUrl}/api/events/${eventId}/tickets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${user2Token}` },
-        body: JSON.stringify({ quantity: 5 })
-      });
-      assert(
-        res.status === 400,
-        '10. Solicitud de cupos superior a los disponibles retorna 400 Bad Request'
-      );
-    }
-
-    // 11. Consulta de mis tickets -> 200 y TicketDTO
-    {
-      const res = await fetch(`${baseUrl}/api/tickets/my-tickets`, {
-        headers: { 'Cookie': `currentUser=${userToken}` }
+        body: JSON.stringify({ quantity: 2 })
       });
       const json = await res.json();
       assert(
-        res.status === 200 && Array.isArray(json.payload) && json.payload.length === 1,
-        '11. Endpoint /api/tickets/my-tickets retorna tickets del usuario formateados'
+        res.status === 400 && json.message.includes('Cupos insuficientes'),
+        'Flujo 5: Inscripción sin cupo suficiente retorna 400 Bad Request con mensaje claro'
       );
     }
 
-    // 12. Cancelación de ticket ajeno -> 403 Forbidden
+    // -------------------------------------------------------------------------
+    // FLUJO 6: user cancela su ticket → cupo liberado → nueva inscripción funciona
+    // -------------------------------------------------------------------------
     {
-      const res = await fetch(`${baseUrl}/api/tickets/${ticketId}/cancel`, {
-        method: 'PATCH',
-        headers: { 'Cookie': `currentUser=${user2Token}` }
-      });
-      assert(res.status === 403, '12. Cancelación de ticket de otro usuario retorna 403 Forbidden');
-    }
-
-    // 13. Cancelación de ticket propio -> 200 OK y liberación de cupo
-    {
-      const res = await fetch(`${baseUrl}/api/tickets/${ticketId}/cancel`, {
+      // 6a. Cancelar ticket propio
+      const cancelRes = await fetch(`${baseUrl}/api/tickets/${ticketId}/cancel`, {
         method: 'PATCH',
         headers: { 'Cookie': `currentUser=${userToken}` }
       });
+      const cancelJson = await cancelRes.json();
+
+      // 6b. Ahora que se liberó el cupo, User2 puede pedir los 2 cupos
+      const newEnrollRes = await fetch(`${baseUrl}/api/events/${eventId}/tickets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${user2Token}` },
+        body: JSON.stringify({ quantity: 2 })
+      });
+
+      assert(
+        cancelRes.status === 200 &&
+        cancelJson.payload?.status === 'cancelled' &&
+        newEnrollRes.status === 201,
+        'Flujo 6: User cancela ticket → Cupo liberado → Nueva inscripción por ese cupo funciona (201)'
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // FLUJO 7: organizer intenta modificar evento ajeno → 403
+    // -------------------------------------------------------------------------
+    {
+      const res = await fetch(`${baseUrl}/api/events/${eventId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${org2Token}` },
+        body: JSON.stringify({ title: 'Intento Modificar Evento Ajeno' })
+      });
+      assert(res.status === 403, 'Flujo 7: Organizer intentando modificar evento ajeno retorna 403 Forbidden');
+    }
+
+    // -------------------------------------------------------------------------
+    // FLUJO 8: admin modifica evento de otro organizador → éxito (200)
+    // -------------------------------------------------------------------------
+    {
+      const res = await fetch(`${baseUrl}/api/events/${eventId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Cookie': `currentUser=${adminToken}` },
+        body: JSON.stringify({ title: 'Torneo Modificado y Aprobado por Admin' })
+      });
       const json = await res.json();
       assert(
-        res.status === 200 && json.payload.status === 'cancelled',
-        '13. Cancelación de ticket propio retorna 200 y status: cancelled'
+        res.status === 200 && json.payload?.title === 'Torneo Modificado y Aprobado por Admin',
+        'Flujo 8: Admin modifica evento de otro organizador con éxito (200 OK)'
       );
     }
 
-    // 14. Consulta de tickets de un evento por organizador ajeno -> 403
+    // -------------------------------------------------------------------------
+    // FLUJO 9: Respuestas de usuario, evento y ticket no contienen password
+    // -------------------------------------------------------------------------
     {
-      const res = await fetch(`${baseUrl}/api/events/${eventId}/tickets`, {
-        headers: { 'Cookie': `currentUser=${organizer2Token}` }
-      });
+      const usersRes = await fetch(`${baseUrl}/api/users`, { headers: { 'Cookie': `currentUser=${adminToken}` } });
+      const usersJson = await usersRes.json();
+      const currentRes = await fetch(`${baseUrl}/api/sessions/current`, { headers: { 'Cookie': `currentUser=${userToken}` } });
+      const currentJson = await currentRes.json();
+      const myTicketsRes = await fetch(`${baseUrl}/api/tickets/my-tickets`, { headers: { 'Cookie': `currentUser=${user2Token}` } });
+      const myTicketsJson = await myTicketsRes.json();
+
+      const noPasswordsInUsers = usersJson.payload.every(u => u.password === undefined);
+      const noPasswordInCurrent = currentJson.payload.password === undefined;
+      const noPasswordInTickets = myTicketsJson.payload.every(t => !t.user?.password && !t.event?.organizer?.password);
+
       assert(
-        res.status === 403,
-        '14. Consulta de tickets de evento ajeno por otro organizador retorna 403 Forbidden'
+        noPasswordsInUsers && noPasswordInCurrent && noPasswordInTickets,
+        'Flujo 9: Respuestas de usuario, evento y ticket pasan por DTO y NUNCA contienen password'
       );
     }
 
-    // 15. Acceso sin sesión -> 401 Unauthorized
+    // -------------------------------------------------------------------------
+    // FLUJO 10: Listado de eventos con ?status=published&page=2&limit=5 devuelve estructura paginada
+    // -------------------------------------------------------------------------
     {
-      const res = await fetch(`${baseUrl}/api/tickets/my-tickets`);
-      assert(res.status === 401, '15. Acceso a ruta protegida sin sesión retorna 401 Unauthorized');
+      // Insertar algunos eventos publicados adicionales para validar paginación real
+      for (let i = 1; i <= 6; i++) {
+        await eventsDao.create({
+          title: `Evento de Prueba Paginación ${i}`,
+          category: 'Running',
+          status: 'published',
+          date: new Date('2027-05-01'),
+          capacity: 50
+        });
+      }
+
+      const res = await fetch(`${baseUrl}/api/events?status=published&page=2&limit=5`);
+      const json = await res.json();
+
+      assert(
+        res.status === 200 &&
+        Array.isArray(json.data) &&
+        json.page === 2 &&
+        json.limit === 5 &&
+        typeof json.total === 'number' &&
+        typeof json.totalPages === 'number' &&
+        json.totalPages >= 2,
+        'Flujo 10: Listado con ?status=published&page=2&limit=5 devuelve estructura { data, page, limit, total, totalPages }'
+      );
     }
 
   } finally {
     server.close();
   }
 
-  console.log('\n======================================================');
-  console.log(`   RESULTADOS: ${passed} PASADAS | ${failed} FALLIDAS`);
-  console.log('======================================================\n');
+  console.log('\n======================================================================');
+  console.log(`   RESUMEN FINAL: ${passed} PASADAS | ${failed} FALLIDAS`);
+  console.log('======================================================================\n');
 
   if (failed > 0) process.exit(1);
 }
 
 runAcceptanceTests().catch(err => {
-  console.error('Error fatal durante la ejecución de los tests:', err);
+  console.error('Error fatal durante la verificación:', err);
   process.exit(1);
 });

@@ -1,0 +1,301 @@
+{
+  "info": {
+    "name": "SportEventHub - Plataforma de Eventos Deportivos (API Backend)",
+    "_postman_id": "8d9700b6-4edf-44ea-91c6-c057cf74ba7b",
+    "description": "Colección oficial de endpoints para la entrega final de SportEventHub. Incluye autenticación con JWT en cookies HttpOnly, control de roles (RBAC), gestión de eventos, inscripción con control de cupos y cancelación.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "eventId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ticketId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Sesiones y Autenticación",
+      "item": [
+        {
+          "name": "Registro de Usuario (POST /api/sessions/register)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Mateo\",\n  \"last_name\": \"Gómez\",\n  \"email\": \"mateo@deportes.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sessions", "register"]
+            },
+            "description": "Registra un nuevo usuario con rol 'user' por defecto. La respuesta pasa por UserDTO y no contiene password."
+          }
+        },
+        {
+          "name": "Login de Usuario (POST /api/sessions/login)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"mateo@deportes.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sessions", "login"]
+            },
+            "description": "Inicia sesión y setea la cookie HttpOnly currentUser con el token JWT."
+          }
+        },
+        {
+          "name": "Consultar Usuario Actual (GET /api/sessions/current)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions/current",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sessions", "current"]
+            },
+            "description": "Ruta protegida que valida la cookie currentUser y retorna los datos del usuario mediante UserDTO (sin password)."
+          }
+        },
+        {
+          "name": "Cerrar Sesión (POST /api/sessions/logout)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sessions", "logout"]
+            },
+            "description": "Elimina la cookie currentUser finalizando la sesión activa."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Eventos Deportivos",
+      "item": [
+        {
+          "name": "Listar Eventos con Filtros y Paginación (GET /api/events)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/events?status=published&page=1&limit=5&sort=date",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "published"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                },
+                {
+                  "key": "sort",
+                  "value": "date"
+                }
+              ]
+            },
+            "description": "Público. Retorna eventos paginados con { data, page, limit, total, totalPages } formateados con EventDTO."
+          }
+        },
+        {
+          "name": "Detalle de un Evento (GET /api/events/:id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}"]
+            },
+            "description": "Público. Retorna los detalles de un evento específico o 404 si no existe."
+          }
+        },
+        {
+          "name": "Crear Evento Deportivo (POST /api/events)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Maratón Ciudad de Primavera 2027\",\n  \"description\": \"Carrera participativa 10K y competitiva 21K\",\n  \"category\": \"Running\",\n  \"date\": \"2027-03-20T08:00:00.000Z\",\n  \"location\": \"Parque Central\",\n  \"capacity\": 100,\n  \"price\": 2500,\n  \"status\": \"published\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events"]
+            },
+            "description": "Requiere rol 'organizer' o 'admin'. Asigna el organizer automáticamente desde req.user.id."
+          }
+        },
+        {
+          "name": "Modificar Evento Propio (PUT /api/events/:id)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Maratón Ciudad de Primavera 2027 - Edición Especial\",\n  \"capacity\": 120,\n  \"price\": 3000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}"]
+            },
+            "description": "Solo el dueño del evento u admin pueden modificarlo. Eventos cancelados no se pueden modificar."
+          }
+        },
+        {
+          "name": "Cambiar Estado del Evento (PATCH /api/events/:id/status)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"cancelled\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "status"]
+            },
+            "description": "Cambia el estado del evento (ej: cancelar). No permite reactivar eventos ya cancelados."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Tickets e Inscripciones",
+      "item": [
+        {
+          "name": "Inscribirse / Reservar Cupo (POST /api/events/:eid/tickets)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/tickets",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "tickets"]
+            },
+            "description": "Cualquier usuario autenticado. Valida fecha futura (event.date > Date.now()), cupos disponibles y previene duplicados (409). Envía email con Nodemailer."
+          }
+        },
+        {
+          "name": "Consultar Mis Tickets (GET /api/tickets/my-tickets)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tickets/my-tickets",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tickets", "my-tickets"]
+            },
+            "description": "Autenticado. Devuelve exclusivamente los tickets del usuario logueado mediante TicketDTO con populate del evento."
+          }
+        },
+        {
+          "name": "Consultar Tickets de un Evento (GET /api/events/:eid/tickets)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/tickets",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "tickets"]
+            },
+            "description": "Solo el organizador dueño del evento o admin. Retorna la lista de inscriptos sin datos sensibles."
+          }
+        },
+        {
+          "name": "Cancelar Ticket (PATCH /api/tickets/:tid/cancel)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tickets/{{ticketId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tickets", "{{ticketId}}", "cancel"]
+            },
+            "description": "Dueño del ticket o admin. Marca el estado en 'cancelled', registra cancelledAt y libera automáticamente el cupo."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Administración de Usuarios",
+      "item": [
+        {
+          "name": "Listar Todos los Usuarios (GET /api/users)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"]
+            },
+            "description": "Exclusivo para rol 'admin'. Devuelve la lista de usuarios mediante UserDTO garantizando que ninguna respuesta exponga contraseñas."
+          }
+        }
+      ]
+    }
+  ]
+}
